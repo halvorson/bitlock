@@ -29,9 +29,14 @@ export default async function handler(req, res) {
       kv.hgetall('bitlock:timestamps'),
     ]);
 
+    const numericTimestamps = {};
+    for (const [tid, ts] of Object.entries(timestamps || {})) {
+      numericTimestamps[tid] = Number(ts);
+    }
+
     return res.status(200).json({
       tried: tried.map(Number),
-      timestamps: timestamps || {},
+      timestamps: numericTimestamps,
     });
   } catch (err) {
     console.error('POST /api/mark error:', err);
