@@ -76,9 +76,13 @@
       -webkit-backdrop-filter: blur(10px);
     }
 
-    /* reserve scrollbar space permanently so toggling between tabs of
-       different lengths doesn't shift content width when the bar appears */
-    #main { scrollbar-gutter: stable; }
+    /* let the scrollbar float over content rather than reserving its own
+       track — keeps list width (and divider lines) consistent and full-bleed
+       whether or not a scrollbar is present */
+    #main { overflow-y: overlay; }
+    @supports not (overflow-y: overlay) {
+      #main { overflow-y: auto; }
+    }
 
     /* segmented filter control */
     .seg-track {
