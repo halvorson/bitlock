@@ -274,7 +274,7 @@
       div.dataset.id = combo.id;
 
       const left = document.createElement('div');
-      left.className = 'flex flex-col gap-1 flex-1 min-w-0';
+      left.className = 'flex items-center flex-1 min-w-0';
 
       const pillRow = document.createElement('div');
       pillRow.className = 'flex flex-wrap gap-1';
@@ -302,11 +302,14 @@
       }
       left.appendChild(pillRow);
 
+      const right = document.createElement('div');
+      right.className = 'shrink-0 flex items-center gap-3';
+
       if (tried && ts) {
         const meta = document.createElement('div');
-        meta.className = 'text-xs font-mono text-ink-900/35 dark:text-teal-50/30';
-        meta.textContent = 'Tried ' + fmtTime(ts);
-        left.appendChild(meta);
+        meta.className = 'text-xs font-mono text-ink-900/35 dark:text-teal-50/30 text-right whitespace-nowrap';
+        meta.textContent = fmtTime(ts);
+        right.appendChild(meta);
       }
 
       const markBtn = document.createElement('button');
@@ -317,9 +320,10 @@
       }`;
       markBtn.textContent = tried ? 'Undo' : 'Mark tried';
       markBtn.addEventListener('click', () => tried ? unmarkTried(combo.id) : markTried(combo.id));
+      right.appendChild(markBtn);
 
       div.appendChild(left);
-      div.appendChild(markBtn);
+      div.appendChild(right);
       return div;
     }
 
