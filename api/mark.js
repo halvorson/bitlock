@@ -12,23 +12,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Load current state
-    const current = (await kv.get('bitlock:state')) || { tried: [], timestamps: {} };
-    let tried = new Set(current.tried.map(Number));
-    let timestamps = current.timestamps || {};
-
     if (undo) {
-      tried.delete(id);
-      delete timestamps[id];
+      await Promise.all([
+        kv.srem('bitlock:tried', id),
+        kv.hdel('bitlock:timestamps', String(id)),
+      ]);
     } else {
-      tried.add(id);
-      timestamps[id] = timestamp || Date.now();
+      await Promise.all([
+        kv.sadd('bitlock:tried', id),
+        kv.hset('bitlock:timestamps', { [id]: timestamp || Date.now() }),
+      ]);
     }
 
-    const next = { tried: [...tried], timestamps };
-    await kv.set('bitlock:state', next);
+    const [tried, timestamps] = await Promise.all([
+      kv.smembers('bitlock:tried'),
+      kv.hgetall('bitlock:timestamps'),
+    ]);
 
-    return res.status(200).json(next);
+    return res.status(200).json({
+      tried: tried.map(Number),
+      timestamps: timestamps || {},
+    });
   } catch (err) {
     console.error('POST /api/mark error:', err);
     return res.status(500).json({ error: 'Failed to update state' });

@@ -6,11 +6,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const data = await kv.get('bitlock:state');
-    if (!data) {
-      return res.status(200).json({ tried: [], timestamps: {} });
-    }
-    return res.status(200).json(data);
+    const [tried, timestamps] = await Promise.all([
+      kv.smembers('bitlock:tried'),
+      kv.hgetall('bitlock:timestamps'),
+    ]);
+
+    return res.status(200).json({
+      tried: tried.map(Number),
+      timestamps: timestamps || {},
+    });
   } catch (err) {
     console.error('GET /api/state error:', err);
     return res.status(500).json({ error: 'Failed to load state' });
