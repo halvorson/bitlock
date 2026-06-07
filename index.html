@@ -76,13 +76,12 @@
       -webkit-backdrop-filter: blur(10px);
     }
 
-    /* let the scrollbar float over content rather than reserving its own
-       track — keeps list width (and divider lines) consistent and full-bleed
-       whether or not a scrollbar is present */
-    #main { overflow-y: overlay; }
-    @supports not (overflow-y: overlay) {
-      #main { overflow-y: auto; }
-    }
+    /* this is a touch-first surface — hide the scrollbar track entirely so
+       it never reserves layout space (which made dividers stop short of the
+       edge and caused width jumps when toggling between tabs of very
+       different lengths). Scrolling still works fine via touch/trackpad. */
+    #main { scrollbar-width: none; -ms-overflow-style: none; }
+    #main::-webkit-scrollbar { display: none; }
 
     /* segmented filter control */
     .seg-track {
@@ -153,7 +152,7 @@
       </div>
 
       <!-- Sticky zone: stays pinned while the list scrolls beneath it -->
-      <div class="shrink-0 sticky top-0 z-10 sticky-blur bg-[#F7F4EE]/85 dark:bg-[#0E1614]/80 border-b border-ink-900/[0.06] dark:border-teal-50/10">
+      <div class="shrink-0 sticky top-0 z-10 sticky-blur bg-[#F7F4EE]/85 dark:bg-[#0E1614]/80 border-t border-b border-ink-900/[0.06] dark:border-teal-50/10">
         <div class="pt-3">
 
           <!-- Next up banner -->
