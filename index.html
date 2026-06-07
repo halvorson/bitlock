@@ -76,6 +76,10 @@
       -webkit-backdrop-filter: blur(10px);
     }
 
+    /* reserve scrollbar space permanently so toggling between tabs of
+       different lengths doesn't shift content width when the bar appears */
+    #main { scrollbar-gutter: stable; }
+
     /* segmented filter control */
     .seg-track {
       display: grid;
