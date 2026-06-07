@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BitLock — Combo Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            teal: {
+              50:  '#E1F5EE',
+              100: '#9FE1CB',
+              200: '#5DCAA5',
+              500: '#1D9E75',
+              600: '#0F6E56',
+              700: '#085041',
+              800: '#04342C',
+            }
+          },
+          fontFamily: {
+            mono: ['ui-monospace', 'SFMono-Regular', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* smooth fade-out for marked items */
+    .fading { opacity: 0; transition: opacity 0.2s ease; }
+  </style>
+</head>
+<body class="bg-white text-gray-900 min-h-screen">
+
+  <div class="max-w-lg mx-auto">
+
+    <!-- Header -->
+    <div class="px-4 pt-5 pb-3 border-b border-gray-100">
+      <div class="flex items-baseline gap-2">
+        <h1 class="text-lg font-medium">BitLock</h1>
+        <span class="text-sm text-gray-400">10-button combo tracker</span>
+      </div>
+      <p class="text-xs text-gray-400 mt-0.5">Shared progress · tap to mark combos tried</p>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading-screen" class="flex flex-col items-center justify-center py-16 text-gray-400">
+      <svg class="animate-spin w-6 h-6 mb-2" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+      <span class="text-sm">Loading shared progress…</span>
+    </div>
+
+    <!-- Main -->
+    <div id="main" class="hidden">
+
+      <!-- Stats -->
+      <div class="flex gap-2 px-4 py-3 border-b border-gray-100">
+        <div class="flex-1 bg-gray-50 rounded-lg px-3 py-2">
+          <div class="text-xs text-gray-400 uppercase tracking-wide">Tried</div>
+          <div class="text-xl font-medium mt-0.5" id="stat-tried">0</div>
+        </div>
+        <div class="flex-1 bg-gray-50 rounded-lg px-3 py-2">
+          <div class="text-xs text-gray-400 uppercase tracking-wide">Remaining</div>
+          <div class="text-xl font-medium mt-0.5" id="stat-left">1024</div>
+        </div>
+        <div class="flex-1 bg-gray-50 rounded-lg px-3 py-2">
+          <div class="text-xs text-gray-400 uppercase tracking-wide">Progress</div>
+          <div class="text-xl font-medium mt-0.5" id="stat-pct">0%</div>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="mx-4 mt-3 mb-3 h-1.5 bg-gray-100 rounded-full">
+        <div id="prog-fill" class="h-full bg-teal-500 rounded-full transition-all duration-500" style="width:0%"></div>
+      </div>
+
+      <!-- Next up banner -->
+      <div id="next-banner" class="mx-4 mb-3 px-4 py-3 bg-teal-50 border border-teal-100 rounded-xl flex items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-medium text-teal-600 mb-0.5">Next up</div>
+          <div id="next-combo-display" class="text-lg font-medium text-teal-800 font-mono tracking-wide"></div>
+        </div>
+        <button id="mark-next-btn"
+          class="shrink-0 px-4 py-2.5 bg-teal-500 text-white text-sm font-medium rounded-lg active:bg-teal-600 transition-colors">
+          Mark tried
+        </button>
+      </div>
+
+      <!-- Search -->
+      <div class="px-4 mb-3">
+        <input id="search" type="text" placeholder="Search buttons e.g. 3-7…"
+          autocomplete="off" autocorrect="off" autocapitalize="off"
+          class="w-full px-3 py-2.5 text-base border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 transition-all" />
+      </div>
+
+      <!-- Filter toggle -->
+      <div class="px-4 mb-2 flex rounded-lg overflow-hidden border border-gray-200">
+        <button data-filter="all" id="tab-all"
+          class="tab-btn flex-1 py-2.5 text-sm text-center text-gray-500 bg-white transition-colors">
+          All (1024)
+        </button>
+        <button data-filter="untried" id="tab-untried"
+          class="tab-btn flex-1 py-2.5 text-sm text-center border-l border-r border-gray-200 transition-colors bg-teal-500 text-white font-medium">
+          Untried
+        </button>
+        <button data-filter="tried" id="tab-tried"
+          class="tab-btn flex-1 py-2.5 text-sm text-center text-gray-500 bg-white transition-colors">
+          Tried (0)
+        </button>
+      </div>
+
+      <!-- Sync status -->
+      <div id="sync-status" class="text-right px-4 text-xs text-gray-300 mb-1"></div>
+
+      <!-- Combo list -->
+      <div id="combo-list" class="overflow-y-auto px-4 divide-y divide-gray-100" style="max-height: 420px;"></div>
+
+    </div>
+  </div>
+
+  <script>
+    const TOTAL = 1024;
+    const SYNC_INTERVAL = 5000;
+    let triedSet = new Set();
+    let triedTimestamps = {};
+    let allCombos = [];
+    let filter = 'untried';
+    let searchQuery = '';
+    let filteredCombos = [];
+    const PAGE_SIZE = 40;
+    let rendered = 0;
+
+    function genCombos() {
+      const result = [];
+      for (let i = 0; i < TOTAL; i++) {
+        const bits = [];
+        for (let b = 0; b < 10; b++) {
+          if ((i >> b) & 1) bits.push(b + 1);
+        }
+        result.push({ id: i, buttons: bits, count: bits.length });
+      }
+      result.sort((a, b) => {
+        if (a.count !== b.count) return a.count - b.count;
+        for (let i = 0; i < Math.min(a.buttons.length, b.buttons.length); i++) {
+          if (a.buttons[i] !== b.buttons[i]) return a.buttons[i] - b.buttons[i];
+        }
+        return a.buttons.length - b.buttons.length;
+      });
+      return result;
+    }
+
+    function fmtTime(ts) {
+      if (!ts) return '';
+      return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function updateStats() {
+      const tried = triedSet.size;
+      const pct = Math.round((tried / TOTAL) * 100);
+      document.getElementById('stat-tried').textContent = tried;
+      document.getElementById('stat-left').textContent = TOTAL - tried;
+      document.getElementById('stat-pct').textContent = pct + '%';
+      document.getElementById('prog-fill').style.width = pct + '%';
+    }
+
+    function getNextUntried() {
+      return allCombos.find(c => !triedSet.has(c.id)) || null;
+    }
+
+    function showNextBanner() {
+      const next = getNextUntried();
+      const banner = document.getElementById('next-banner');
+      if (next) {
+        document.getElementById('next-combo-display').textContent =
+          next.buttons.length === 0 ? '(no buttons)' : next.buttons.join(' · ');
+        banner.classList.remove('hidden');
+        document.getElementById('mark-next-btn').onclick = () => markTried(next.id);
+      } else {
+        banner.innerHTML = `<div class="flex-1 text-center text-teal-600 font-medium text-sm">🏆 All combos tried!</div>`;
+      }
+    }
+
+    function makeComboItem(combo) {
+      const tried = triedSet.has(combo.id);
+      const ts = triedTimestamps[combo.id];
+
+      const div = document.createElement('div');
+      div.className = 'flex items-center gap-3 py-2.5';
+      div.dataset.id = combo.id;
+
+      const left = document.createElement('div');
+      left.className = 'flex flex-col gap-1 flex-1 min-w-0';
+
+      const pillRow = document.createElement('div');
+      pillRow.className = 'flex flex-wrap gap-1';
+
+      if (combo.buttons.length === 0) {
+        const pill = document.createElement('div');
+        pill.className = `px-2 h-8 flex items-center rounded-lg text-xs font-medium border ${
+          tried ? 'bg-teal-500 border-teal-500 text-white' : 'bg-white border-gray-200 text-gray-600'
+        }`;
+        pill.textContent = 'none';
+        pillRow.appendChild(pill);
+      } else {
+        combo.buttons.forEach(b => {
+          const pill = document.createElement('div');
+          pill.className = `w-8 h-8 flex items-center justify-center rounded-full text-xs font-medium border ${
+            tried ? 'bg-teal-500 border-teal-500 text-white' : 'bg-white border-gray-200 text-gray-700'
+          }`;
+          pill.textContent = b;
+          pillRow.appendChild(pill);
+        });
+      }
+      left.appendChild(pillRow);
+
+      if (tried && ts) {
+        const meta = document.createElement('div');
+        meta.className = 'text-xs text-gray-400';
+        meta.textContent = 'Tried ' + fmtTime(ts);
+        left.appendChild(meta);
+      }
+
+      const markBtn = document.createElement('button');
+      markBtn.className = `shrink-0 min-w-[88px] px-3 py-2.5 text-sm rounded-lg border transition-colors active:scale-95 ${
+        tried
+          ? 'bg-red-50 border-red-200 text-red-700'
+          : 'bg-teal-50 border-teal-200 text-teal-700'
+      }`;
+      markBtn.textContent = tried ? 'Undo' : 'Mark tried';
+      markBtn.addEventListener('click', () => tried ? unmarkTried(combo.id) : markTried(combo.id));
+
+      div.appendChild(left);
+      div.appendChild(markBtn);
+      return div;
+    }
+
+    function getFiltered() {
+      let base = allCombos;
+      if (filter === 'tried') base = base.filter(c => triedSet.has(c.id));
+      if (filter === 'untried') base = base.filter(c => !triedSet.has(c.id));
+      if (searchQuery) {
+        const nums = searchQuery.split(/[-,\s]+/).map(Number).filter(n => n >= 1 && n <= 10);
+        if (nums.length > 0) base = base.filter(c => nums.every(n => c.buttons.includes(n)));
+      }
+      return base;
+    }
+
+    function renderList(reset = true) {
+      const list = document.getElementById('combo-list');
+      if (reset) {
+        filteredCombos = getFiltered();
+        rendered = 0;
+        list.innerHTML = '';
+        if (filteredCombos.length === 0) {
+          list.innerHTML = '<div class="py-8 text-center text-sm text-gray-400">No combos match.</div>';
+          return;
+        }
+      }
+      const chunk = filteredCombos.slice(rendered, rendered + PAGE_SIZE);
+      chunk.forEach(c => list.appendChild(makeComboItem(c)));
+      rendered += chunk.length;
+    }
+
+    function updateTabs() {
+      const tried = triedSet.size;
+      const tabs = {
+        all: `All (${TOTAL})`,
+        untried: `Untried (${TOTAL - tried})`,
+        tried: `Tried (${tried})`,
+      };
+      document.querySelectorAll('.tab-btn').forEach(t => {
+        const f = t.dataset.filter;
+        t.textContent = tabs[f];
+        const active = f === filter;
+        t.className = `tab-btn flex-1 py-2.5 text-sm text-center transition-colors ${
+          active ? 'bg-teal-500 text-white font-medium' : 'bg-white text-gray-500'
+        }`;
+        if (f === 'untried') t.classList.add('border-l', 'border-r', 'border-gray-200');
+      });
+    }
+
+    function setSyncStatus(msg) {
+      document.getElementById('sync-status').textContent = msg;
+    }
+
+    async function fetchState() {
+      const res = await fetch('/api/state');
+      if (!res.ok) throw new Error('fetch failed');
+      return res.json();
+    }
+
+    async function postMark(id, timestamp, undo = false) {
+      const res = await fetch('/api/mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, timestamp, undo }),
+      });
+      if (!res.ok) throw new Error('mark failed');
+      return res.json();
+    }
+
+    async function loadState(silent = false) {
+      try {
+        const data = await fetchState();
+        triedSet = new Set((data.tried || []).map(Number));
+        triedTimestamps = data.timestamps || {};
+        if (!silent) setSyncStatus('Synced · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch (e) {
+        if (!silent) setSyncStatus('Failed to sync');
+      }
+    }
+
+    async function markTried(id) {
+      const ts = Date.now();
+      triedSet.add(id);
+      triedTimestamps[id] = ts;
+      updateStats(); updateTabs(); showNextBanner();
+      const item = document.querySelector(`[data-id="${id}"]`);
+      if (item) {
+        if (filter === 'untried') {
+          item.classList.add('fading');
+          setTimeout(() => { item.remove(); filteredCombos = getFiltered(); }, 220);
+        } else {
+          item.replaceWith(makeComboItem(allCombos.find(c => c.id === id)));
+        }
+      }
+      try {
+        await postMark(id, ts, false);
+        setSyncStatus('Saved · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch (e) { setSyncStatus('Save failed'); }
+    }
+
+    async function unmarkTried(id) {
+      triedSet.delete(id);
+      delete triedTimestamps[id];
+      updateStats(); updateTabs(); showNextBanner();
+      const item = document.querySelector(`[data-id="${id}"]`);
+      if (item) {
+        if (filter === 'tried') {
+          item.classList.add('fading');
+          setTimeout(() => { item.remove(); filteredCombos = getFiltered(); }, 220);
+        } else {
+          item.replaceWith(makeComboItem(allCombos.find(c => c.id === id)));
+        }
+      }
+      try {
+        await postMark(id, null, true);
+        setSyncStatus('Saved · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch (e) { setSyncStatus('Save failed'); }
+    }
+
+    async function backgroundSync() {
+      const before = triedSet.size;
+      await loadState(true);
+      if (triedSet.size !== before) {
+        updateStats(); updateTabs(); showNextBanner(); renderList();
+        setSyncStatus('Auto-synced · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+    }
+
+    async function init() {
+      allCombos = genCombos();
+      await loadState();
+      document.getElementById('loading-screen').classList.add('hidden');
+      document.getElementById('main').classList.remove('hidden');
+      updateStats(); updateTabs(); showNextBanner(); renderList();
+
+      document.getElementById('combo-list').addEventListener('scroll', function () {
+        if (this.scrollTop + this.clientHeight >= this.scrollHeight - 100 && rendered < filteredCombos.length) {
+          renderList(false);
+        }
+      });
+
+      document.getElementById('search').addEventListener('input', e => {
+        searchQuery = e.target.value.trim();
+        renderList();
+      });
+
+      document.querySelectorAll('.tab-btn').forEach(t => {
+        t.addEventListener('click', () => { filter = t.dataset.filter; updateTabs(); renderList(); });
+      });
+
+      setInterval(backgroundSync, SYNC_INTERVAL);
+    }
+
+    init();
+  </script>
+</body>
+</html>

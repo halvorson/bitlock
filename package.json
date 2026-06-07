@@ -1,0 +1,11 @@
+{
+  "name": "bitlock",
+  "version": "1.0.0",
+  "description": "Brute-force 10-button combination lock tracker",
+  "dependencies": {
+    "@vercel/kv": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
